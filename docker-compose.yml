@@ -8,6 +8,8 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'ef191fa90e2e82e063c8ae502075f3a00e4eb2de2836dcbfc6880ece95c43f23'
+    AIRFLOW__CORE__FERNET_KEY: '46BKJoQYlPPOexq0OhDZnIlNepKFf8Ep8_C_cszBWTE='
   volumes:
     - ./dags:/opt/airflow/dags
     - ./data:/opt/airflow/data
@@ -17,9 +19,20 @@ x-airflow-common:
       condition: service_healthy
 
 services:
+  # Container apenas para garantir permissoes nas pastas
+  setup-permissions:
+    image: alpine:latest
+    user: "root"
+    volumes:
+      - ./data:/data
+    command: sh -c "mkdir -p /data/bronze /data/silver && chmod -R 777 /data"
+
   # Banco Postgres (Backend e Camada Gold)
   postgres:
     image: postgres:13
+    depends_on:
+      setup-permissions:
+        condition: service_completed_successfully
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
