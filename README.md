@@ -1,25 +1,30 @@
 # Pipeline de Engenharia de Dados - Desafio Técnico
 
-Pipeline de dados desenvolvida com arquitetura em camadas (Medalhão), orquestrada via **Apache Airflow**, processada com **PySpark** e conteinerizada com **Docker**.
+Pipeline de dados desenvolvida com arquitetura em camadas (Medalhão), orquestrada via **Apache Airflow**, processada com **PySpark** e conteinerizada com **Docker**. A arquitetura conta com controle rigoroso de qualidade de dados (Data Quality) e roteamento de anomalias (Dead Letter Queue).
 
 ## 🛠️ Tecnologias Utilizadas
-* **Python 3.10** & **PySpark** (Processamento distribuído)
-* **Apache Airflow** (Orquestração de pipelines)
+* **Python 3.10** & **PySpark** (Processamento distribuído e Data Quality nativo)
+* **Apache Airflow** (Orquestração de pipelines e Circuit Breaker)
 * **Docker & Docker Compose** (Conteinerização e reprodutibilidade)
-* **Great Expectations** (Data Quality Automatizado - *Em breve*)
-* **PostgreSQL** (Backend do Airflow e Camada Gold / Data Warehouse)
+* **Pytest** (Testes unitários, de integridade de DAGs e de integração)
+* **GitHub Actions** (Esteira de CI/CD com validação de formatação e testes)
+* **PostgreSQL** (Backend do Airflow e futura Camada Gold / Data Warehouse)
 
 ## 📁 Estrutura do Projeto
 ```text
 .
 ├── .github/workflows/       # Esteira de CI (GitHub Actions)
-├── dags/                    # DAGs do Apache Airflow
-│   └── 01_bronze_ingestion.py # Pipeline de Ingestão (Camada Bronze)
-├── data/                    # Data Lake Local (Bronze, Silver, Gold)
-├── start.sh                 # Script de inicialização automatizada
-├── Dockerfile               # Imagem customizada com Java e Airflow
-├── docker-compose.yml       # Orquestração dos serviços
-└── requirements.txt         # Dependências do projeto
+├── dags/                    # DAGs do Apache Airflow[cite: 6]
+│   ├── 01_bronze_ingestion.py # Ingestão e validação inicial de schema
+│   └── 02_silver_transform.py # Data Quality, Tipagem e roteamento para DLQ
+├── data/                    # Data Lake Local (Bronze, Silver e Quarentena)
+├── tests/                   # Suíte de testes automatizados (Pytest)
+│   ├── data/                # Dados mockados para simulação de cenários
+│   └── test_*.py            # Validação de integridade e lógica de negócio
+├── start.sh                 # Script de inicialização automatizada[cite: 6]
+├── Dockerfile               # Imagem customizada com Java e Airflow[cite: 6]
+├── docker-compose.yml       # Orquestração dos serviços[cite: 6]
+└── requirements.txt         # Dependências do projeto[cite: 6]
 ```
 
 ## 🚀 Como Executar o Projeto
@@ -35,12 +40,13 @@ Garantimos a execução fácil em qualquer ambiente através de containers Docke
    * **URL:** http://localhost:8080
    * **Usuário:** admin
    * **Senha:** admin
-4. Ative e execute a DAG `01_bronze_ingestion`.
+4. Ative e execute as DAGs em ordem: `01_bronze_ingestion` e depois a `02_silver_transform`.
 
 ## 📈 Próximos Passos
 * [x] Setup do ambiente Docker e Airflow
 * [x] Ingestão e salvamento da Camada Bronze em formato Parquet
-* [ ] Implementação do Data Quality Automatizado (Great Expectations)
-* [ ] Camada Silver (Limpeza e Tratamento de Dados)
-* [ ] Camada Gold (Agregações e Carga no PostgreSQL)
-* [ ] Testes Unitários e Esteira de CI/CD (GitHub Actions)
+* [x] Camada Silver (Limpeza, Tratamento de Dados e Schema Enforcement)
+* [x] Implementação do Data Quality Automatizado (PySpark Nativo, DLQ e Relatório JSON)
+* [x] Testes Unitários e Esteira de CI/CD (GitHub Actions)
+* [ ] Camada Gold (Agregações por dimensão de negócio)
+* [ ] Carga final no banco de dados PostgreSQL
