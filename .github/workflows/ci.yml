@@ -2,30 +2,52 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
+
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
+
 
 jobs:
-  code-quality:
+  tests:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
 
-    - name: Setup Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install Linting Tools
-      run: |
-        python -m pip install --upgrade pip
-        pip install flake8 black
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    - name: Check format with Black
-      run: black --check .
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
 
-    - name: Lint with Flake8
-      run: flake8 . --count --max-line-length=88 --statistics
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run DAG integrity tests
+        env:
+          AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
+        run: |
+          pytest tests/test_dag_integrity.py -v
+
+      - name: Run Bronze integration tests
+        env:
+          AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
+        run: |
+          pytest tests/test_bronze_ingestion.py -v
+
+      - name: Run Silver integration tests
+        env:
+          AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
+        run: |
+          pytest tests/test_silver_integration.py -v

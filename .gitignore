@@ -7,3 +7,4 @@ data/
 airflow-webserver.pid
 logs/
 .pytest_cache/
+!tests/data/
