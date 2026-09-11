@@ -1,0 +1,6 @@
+timestamp,receiving_address,amount,transaction_type,location_region,risk_score
+1672574400,addr1,100.50,purchase,South America,15.5
+1672574700,addr2,-50.00,transfer,Europe,20.0
+4102444800,addr3,200.00,sale,Asia,10.0
+1672575000,addr4,300.00,purchase,Euro,5.0
+1672575300,,500.00,scam,Africa,105.0

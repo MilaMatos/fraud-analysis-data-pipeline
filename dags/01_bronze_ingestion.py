@@ -5,60 +5,60 @@ from datetime import datetime
 from pyspark.sql import SparkSession
 from airflow.models import Variable
 
+# ==========================================
+# PARÂMETROS E REGRAS DE NEGÓCIO CENTRALIZADAS
+# ==========================================
 BASE_PATH = Variable.get("DATA_LAKE_PATH", default_var="/opt/airflow/data")
+SOURCE_CSV_NAME = "df_fraud_credit.csv"
+BRONZE_TARGET_DIR = "fraud_data"
+EXPECTED_COLUMNS = [
+    "timestamp",
+    "receiving_address",
+    "amount",
+    "transaction_type",
+    "location_region",
+    "risk_score",
+]
 
 
-# Extrai CSV e salva como Parquet
-def load_bronze():
+def load_bronze(source_path_override=None, target_path_override=None, **kwargs):
     spark = SparkSession.builder.appName("BronzeIngestion").getOrCreate()
 
-    # Caminhos de origem e destino
-    source_path = os.path.join(BASE_PATH, "df_fraud_credit.csv")
-    target_path = os.path.join(BASE_PATH, "bronze", "fraud_data")
+    source_path = source_path_override or os.path.join(BASE_PATH, SOURCE_CSV_NAME)
+    target_path = target_path_override or os.path.join(
+        BASE_PATH, "bronze", BRONZE_TARGET_DIR
+    )
 
-    # Lê arquivo bruto
     df = spark.read.csv(source_path, header=True, inferSchema=True)
 
-    # Grava na camada Bronze
     df.write.mode("overwrite").parquet(target_path)
-
     spark.stop()
 
 
 def dq_check_bronze():
     spark = SparkSession.builder.appName("BronzeDQ").getOrCreate()
-    target_path = os.path.join(BASE_PATH, "bronze", "fraud_data")
+    target_path = os.path.join(BASE_PATH, "bronze", BRONZE_TARGET_DIR)
 
     df = spark.read.parquet(target_path)
 
-    # Regra 1: O arquivo não pode estar vazio
-    row_count = df.count()
-    if row_count == 0:
-        raise ValueError("DQ Fail: A camada Bronze esta vazia. Nenhum dado lido.")
+    if df.isEmpty():
+        spark.stop()
+        raise ValueError("DQ Fail: A camada Bronze está vazia. Nenhum dado lido.")
 
-    # Regra 2: Validacao de Contrato (Colunas criticas devem existir)
-    expected_columns = [
-        "timestamp",
-        "receiving_address",
-        "amount",
-        "transaction_type",
-        "location_region",
-        "risk_score",
-    ]
-
-    missing_cols = [col for col in expected_columns if col not in df.columns]
+    # Validação de Contrato
+    missing_cols = [col for col in EXPECTED_COLUMNS if col not in df.columns]
     if missing_cols:
+        spark.stop()
         raise ValueError(f"DQ Fail: Colunas ausentes no schema - {missing_cols}")
 
-    print(f"Data Quality Bronze OK. Volume: {row_count} registros validados.")
+    print("Data Quality Bronze OK. Estrutura de colunas e dados validados com sucesso.")
     spark.stop()
 
 
-# Define a DAG
 with DAG(
     dag_id="01_bronze_ingestion",
     start_date=datetime(2026, 9, 10),
-    schedule_interval=None,
+    schedule=None,
     catchup=False,
     tags=["bronze", "ingestion", "data-quality"],
 ) as dag:
@@ -69,5 +69,4 @@ with DAG(
 
     dq_task = PythonOperator(task_id="dq_check_bronze", python_callable=dq_check_bronze)
 
-    # Ordem de execução
     ingest_task >> dq_task
