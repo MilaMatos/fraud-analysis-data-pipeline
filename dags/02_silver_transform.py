@@ -53,7 +53,7 @@ def process_silver_and_dq(
         .withColumn("timestamp", col("timestamp").cast("timestamp"))
     )
 
-    # Condições de Qualidade utilizando parâmetros globais
+    # Condições de validação
     cond_amount = col("amount").isNotNull() & (col("amount") >= 0)
     cond_risk = col("risk_score").isNotNull() & col("risk_score").between(0.0, 100.0)
     cond_time = col("timestamp").isNotNull() & (col("timestamp") <= current_timestamp())
@@ -74,11 +74,34 @@ def process_silver_and_dq(
         concat_ws(
             " | ",
             array(
-                when(~cond_amount, "Valor Negativo/Nulo"),
-                when(~cond_risk, "Risk Score Invalido/Nulo"),
-                when(~cond_time, "Timestamp Futuro/Nulo"),
-                when(~cond_type, "Tipo de Transacao Invalido"),
-                when(~cond_region, "Regiao Invalida/Nula"),
+                when(col("amount").isNull(), "Amount Nulo"),
+                when(
+                    col("amount").isNotNull() & (col("amount") < 0), "Amount Negativo"
+                ),
+                when(col("risk_score").isNull(), "Risk Score Nulo"),
+                when(
+                    col("risk_score").isNotNull()
+                    & ~col("risk_score").between(0.0, 100.0),
+                    "Risk Score Invalido",
+                ),
+                when(col("timestamp").isNull(), "Timestamp Nulo"),
+                when(
+                    col("timestamp").isNotNull()
+                    & (col("timestamp") > current_timestamp()),
+                    "Timestamp Futuro",
+                ),
+                when(col("transaction_type").isNull(), "Tipo Transacao Nulo"),
+                when(
+                    col("transaction_type").isNotNull()
+                    & ~col("transaction_type").isin(VALID_TRANSACTION_TYPES),
+                    "Tipo Transacao Invalido",
+                ),
+                when(col("location_region").isNull(), "Regiao Nula"),
+                when(
+                    col("location_region").isNotNull()
+                    & ~col("location_region").isin(VALID_LOCATION_REGIONS),
+                    "Regiao Invalida",
+                ),
             ),
         ),
     )
@@ -86,37 +109,69 @@ def process_silver_and_dq(
     valid_count = df_valid.count()
     error_count = df_quarantine.count()
 
-    # Métricas de Completude e Anomalias
-    null_exprs = [
-        _sum(
-            when(
-                col(c).isNull() | (col(c).cast("string").rlike("(?i)^none$|nan")), 1
-            ).otherwise(0)
-        ).alias(c)
-        for c in df.columns
-    ]
-    null_counts = df.agg(*null_exprs).collect()[0].asDict()
-    total_missing = sum(null_counts.values())
-
-    anomaly_metrics = (
+    # Métricas de qualidade por coluna
+    col_metrics = (
         df.select(
-            _sum(when(~cond_amount | ~cond_risk | ~cond_time, 1).otherwise(0)).alias(
-                "inconsistent_values"
+            _sum(when(col("amount").isNull(), 1).otherwise(0)).alias("amount_null"),
+            _sum(when(col("amount").isNotNull() & ~cond_amount, 1).otherwise(0)).alias(
+                "amount_invalid"
             ),
-            _sum(when(~cond_type | ~cond_region, 1).otherwise(0)).alias(
-                "incorrect_values"
+            _sum(when(col("risk_score").isNull(), 1).otherwise(0)).alias(
+                "risk_score_null"
             ),
+            _sum(
+                when(col("risk_score").isNotNull() & ~cond_risk, 1).otherwise(0)
+            ).alias("risk_score_invalid"),
+            _sum(when(col("timestamp").isNull(), 1).otherwise(0)).alias(
+                "timestamp_null"
+            ),
+            _sum(when(col("timestamp").isNotNull() & ~cond_time, 1).otherwise(0)).alias(
+                "timestamp_invalid"
+            ),
+            _sum(when(col("transaction_type").isNull(), 1).otherwise(0)).alias(
+                "type_null"
+            ),
+            _sum(
+                when(col("transaction_type").isNotNull() & ~cond_type, 1).otherwise(0)
+            ).alias("type_invalid"),
+            _sum(when(col("location_region").isNull(), 1).otherwise(0)).alias(
+                "region_null"
+            ),
+            _sum(
+                when(col("location_region").isNotNull() & ~cond_region, 1).otherwise(0)
+            ).alias("region_invalid"),
         )
         .collect()[0]
         .asDict()
     )
 
-    completeness = {}
-    for c, null_qtd in null_counts.items():
-        completeness[c] = {
-            "null_count": null_qtd,
+    column_quality = {}
+    total_missing = 0
+    total_invalid = 0
+
+    col_map = {
+        "amount": ("amount_null", "amount_invalid"),
+        "risk_score": ("risk_score_null", "risk_score_invalid"),
+        "timestamp": ("timestamp_null", "timestamp_invalid"),
+        "transaction_type": ("type_null", "type_invalid"),
+        "location_region": ("region_null", "region_invalid"),
+    }
+
+    # Consolida resultados do relatório
+    for column, (null_key, invalid_key) in col_map.items():
+        n_null = col_metrics[null_key]
+        n_invalid = col_metrics[invalid_key]
+        n_valid = total_rows - n_null - n_invalid
+
+        total_missing += n_null
+        total_invalid += n_invalid
+
+        column_quality[column] = {
+            "valid": n_valid,
+            "null": n_null,
+            "invalid": n_invalid,
             "completeness_pct": (
-                round(((total_rows - null_qtd) / total_rows) * 100, 2)
+                round(((total_rows - n_null) / total_rows) * 100, 2)
                 if total_rows > 0
                 else 0.0
             ),
@@ -135,12 +190,8 @@ def process_silver_and_dq(
             "error_rate_pct": error_rate,
             "conformity_rate_pct": conformity_rate,
         },
-        "anomalies": {
-            "missing_values": total_missing,
-            "inconsistent_values": anomaly_metrics["inconsistent_values"],
-            "incorrect_values": anomaly_metrics["incorrect_values"],
-        },
-        "column_completeness": completeness,
+        "anomalies": {"missing_values": total_missing, "invalid_values": total_invalid},
+        "column_quality": column_quality,
     }
 
     os.makedirs(os.path.dirname(json_report_path), exist_ok=True)

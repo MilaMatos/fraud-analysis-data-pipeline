@@ -79,6 +79,13 @@ def test_bronze_to_silver_pipeline(tmp_path):
     assert report["metrics"]["error_rate_pct"] == 80.0
     assert report["metrics"]["conformity_rate_pct"] == 20.0
 
+    assert report["anomalies"]["missing_values"] == 2
+    assert report["anomalies"]["invalid_values"] == 2
+
+    assert "column_quality" in report
+    assert report["column_quality"]["amount"]["invalid"] == 1
+    assert report["column_quality"]["risk_score"]["invalid"] == 0
+
 
 def test_circuit_breaker_blocks_low_conformity():
     silver_dag = load_module("silver_dag", SILVER_DAG_PATH)
