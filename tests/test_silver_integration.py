@@ -64,27 +64,28 @@ def test_bronze_to_silver_pipeline(tmp_path):
         quarantine_df = spark.read.parquet(str(quarantine_path))
 
         assert silver_df.count() == 1
-        assert quarantine_df.count() == 4
+        assert quarantine_df.count() == 7
     finally:
         spark.stop()
 
     # Validação de Métricas e Relatório
-    assert result["conformity_pct"] == 20.0
+    assert result["conformity_pct"] == 12.5
 
     with open(report_path, "r") as file:
         report = json.load(file)
 
-    assert report["metrics"]["total_records"] == 5
-    assert report["metrics"]["total_errors"] == 4
-    assert report["metrics"]["error_rate_pct"] == 80.0
-    assert report["metrics"]["conformity_rate_pct"] == 20.0
+    assert report["metrics"]["total_records"] == 8
+    assert report["metrics"]["total_errors"] == 7
+    assert report["metrics"]["error_rate_pct"] == 87.5
+    assert report["metrics"]["conformity_rate_pct"] == 12.5
 
-    assert report["anomalies"]["missing_values"] == 2
-    assert report["anomalies"]["invalid_values"] == 2
+    assert report["anomalies"]["missing_values"] == 3
+    assert report["anomalies"]["invalid_values"] == 4
 
-    assert "column_quality" in report
     assert report["column_quality"]["amount"]["invalid"] == 1
-    assert report["column_quality"]["risk_score"]["invalid"] == 0
+    assert report["column_quality"]["amount"]["null"] == 1
+    assert report["column_quality"]["risk_score"]["invalid"] == 1
+    assert report["column_quality"]["risk_score"]["null"] == 1
 
 
 def test_circuit_breaker_blocks_low_conformity():
@@ -92,7 +93,7 @@ def test_circuit_breaker_blocks_low_conformity():
 
     class FakeTaskInstance:
         def xcom_pull(self, task_ids):
-            return {"conformity_pct": 20.0}
+            return {"conformity_pct": 12.5}
 
     with pytest.raises(ValueError, match="Circuit Breaker acionado"):
         silver_dag.evaluate_circuit_breaker(FakeTaskInstance())

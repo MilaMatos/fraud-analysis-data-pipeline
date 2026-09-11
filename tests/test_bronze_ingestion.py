@@ -47,7 +47,7 @@ def test_bronze_ingestion(tmp_path):
     try:
         df = spark.read.parquet(str(bronze_path))
 
-        assert df.count() == 5
+        assert df.count() == 8
 
         expected_columns = {
             "timestamp",

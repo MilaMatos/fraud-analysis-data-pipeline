@@ -4,3 +4,6 @@ timestamp,receiving_address,amount,transaction_type,location_region,risk_score
 4102444800,addr3,200.00,sale,Asia,10.0
 1672575000,addr4,300.00,purchase,Euro,5.0
 1672575300,,500.00,scam,Africa,105.0
+1672575600,addr6,,purchase,Asia,50.0
+1672575900,addr7,400.00,transfer,Europe,
+1672576200,addr8,150.00,sale,,15.0
