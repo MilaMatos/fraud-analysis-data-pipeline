@@ -4,7 +4,10 @@ from airflow.models import DagBag
 
 @pytest.fixture(scope="module")
 def dag_bag():
-    return DagBag(dag_folder="dags/")
+    return DagBag(
+        dag_folder="dags/",
+        include_examples=False,
+    )
 
 
 def test_dags_load_without_errors(dag_bag):
