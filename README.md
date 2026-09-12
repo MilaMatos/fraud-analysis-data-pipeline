@@ -20,24 +20,46 @@ Pipeline de dados desenvolvida com arquitetura em camadas (Medalhão), orquestra
 ├── tests/                   # Suite automatizada (Pytest)
 ├── app.py                   # Portal de Observabilidade (Streamlit)
 ├── data_catalog.json        # Dicionario de metadados dinamico
-├── start.sh                 # Entrypoint
 ├── Dockerfile               # Custom Image
 └── docker-compose.yml       # Infraestrutura
 ```
 
-## 🚀 Como Executar o Projeto
+## 🚀 Como Executar o Projeto (Windows, Linux ou macOS)
 
-1. Certifique-se de que o arquivo de dados (`df_fraud_credit.csv`) está posicionado na pasta `data/`.
-2. Na raiz do projeto, execute o script de inicialização automatizada:
-   ```bash
-   ./start.sh
-   ```
-3. A pipeline iniciará automaticamente. Acesse:
-   * Observabilidade (Streamlit): http://localhost:8501
-   * Airflow UI: http://localhost:8080
-      * **Usuário:** admin
-      * **Senha:** admin
+### Pré-requisitos
+1. **Docker Desktop** (ou Docker Engine + Docker Compose v2) instalado e rodando.
+   * *Usuários de Windows:* Certifique-se de que a Virtualização está ativada na BIOS e o WSL (Windows Subsystem for Linux) está instalado (`wsl --install`).
+2. O arquivo de dados bruto (`df_fraud_credit.csv`) deve estar posicionado dentro da pasta `data/` na raiz do projeto.
 
+### Passo a Passo de Inicialização
+
+**1. Inicializar o Banco de Dados do Airflow**
+Cria as tabelas de metadados e o usuário administrador nativo.
+```bash
+docker compose up airflow-init
+```
+*Aguarde o processamento até o terminal retornar a mensagem indicando que o container finalizou (`exited with code 0`).*
+
+**2. Subir a Infraestrutura**
+Inicia os serviços do Postgres, Airflow (Webserver e Scheduler) e Streamlit em segundo plano. O container `setup-permissions` ajustará as permissões da pasta `data/` automaticamente.
+```bash
+docker compose up -d
+```
+
+**3. Ativar e Executar a Pipeline**
+Aguarde de 15 a 30 segundos para a inicialização completa do webserver e execute os comandos abaixo para tirar a DAG da pausa e engatilhá-la:
+```bash
+docker compose exec airflow-webserver airflow dags unpause pipeline_fraud_analysis
+docker compose exec airflow-webserver airflow dags trigger pipeline_fraud_analysis
+```
+*Alternativa:* Você também pode acessar a interface web do Airflow e ativar a DAG manualmente alterando o botão de "Pause/Unpause" e clicando em "Trigger DAG".
+
+### 🔗 Acessos
+Com os serviços em execução, acompanhe a pipeline pelo navegador:
+* **Airflow UI:** [http://localhost:8080](http://localhost:8080)
+  * **Usuário:** admin
+  * **Senha:** admin
+* **Observabilidade (Streamlit):** [http://localhost:8501](http://localhost:8501)
 
 ## 📈 Próximos Passos
 * [x] Setup do ambiente Docker e Airflow
