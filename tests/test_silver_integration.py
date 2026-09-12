@@ -46,7 +46,7 @@ def test_bronze_to_silver_pipeline(tmp_path):
     spark = create_spark()
     try:
         bronze_df = spark.read.parquet(str(bronze_path))
-        assert bronze_df.count() == 5
+        assert bronze_df.count() == 8
     finally:
         spark.stop()
 
