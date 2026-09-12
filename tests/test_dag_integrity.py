@@ -17,6 +17,7 @@ def test_dags_load_without_errors(dag_bag):
 def test_expected_dags_exist(dag_bag):
     assert "01_bronze_ingestion" in dag_bag.dags
     assert "02_silver_transform" in dag_bag.dags
+    assert "03_gold_aggregations" in dag_bag.dags
 
 
 def test_bronze_dag_structure(dag_bag):
@@ -39,3 +40,10 @@ def test_silver_dag_structure(dag_bag):
     assert dag.task_dict["process_silver_and_dq"].downstream_task_ids == {
         "evaluate_circuit_breaker"
     }
+
+
+def test_gold_dag_structure(dag_bag):
+    dag = dag_bag.dags["03_gold_aggregations"]
+
+    assert "aggregate_region_metrics" in dag.task_ids
+    assert "aggregate_risk_analysis" in dag.task_ids
