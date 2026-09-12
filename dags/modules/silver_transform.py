@@ -192,7 +192,14 @@ def process_silver_and_dq(
         "column_quality": column_quality,
     }
 
-    os.makedirs(os.path.dirname(json_report_path), exist_ok=True)
+    # Cria diretorio de historico e salva arquivo unico
+    reports_dir = os.path.join(BASE_PATH, "silver", "dq_reports")
+    os.makedirs(reports_dir, exist_ok=True)
+    
+    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_filename = f"dq_report_{timestamp_str}.json"
+    json_report_path = os.path.join(reports_dir, report_filename)
+
     with open(json_report_path, "w") as f:
         json.dump(dq_report, f, indent=4)
 

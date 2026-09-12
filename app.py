@@ -2,6 +2,8 @@ import streamlit as st
 import json
 import pandas as pd
 import duckdb
+import glob
+import os
 
 st.set_page_config(page_title="Lakehouse Observability", layout="wide")
 
@@ -38,26 +40,35 @@ menu = st.sidebar.radio(
 # 1. MONITORAMENTO DQ
 if menu == "Monitoramento DQ":
     st.header("Saúde da Pipeline (Camada Silver)")
-    dq_data = load_json("data/silver/dq_report_silver.json")
-
-    if dq_data:
-        st.write(f"**Última execução:** {dq_data['execution_date']}")
-
+    
+    # Busca arquivos no diretorio e ordena do mais recente pro mais antigo
+    report_files = sorted(glob.glob("data/silver/dq_reports/*.json"), reverse=True)
+    
+    if report_files:
+        # Interface de selecao de historico
+        selected_report = st.selectbox(
+            "Selecione a execução (Histórico):", 
+            report_files, 
+            format_func=lambda x: os.path.basename(x)
+        )
+        
+        dq_data = load_json(selected_report)
+        
+        st.write(f"**Data do Relatório:** {dq_data['execution_date']}")
+        
         m = dq_data["metrics"]
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total de Registros", f"{m['total_records']:,}")
         c2.metric("Erros Capturados", f"{m['total_errors']:,}")
         c3.metric("Taxa de Erro", f"{m['error_rate_pct']}%")
         c4.metric("Conformidade", f"{m['conformity_rate_pct']}%")
-
+        
         st.divider()
         st.subheader("Qualidade por Coluna")
         df_col = pd.DataFrame.from_dict(dq_data["column_quality"], orient="index")
         st.dataframe(df_col, use_container_width=True)
     else:
-        st.warning(
-            "Relatório de DQ não encontrado. Execute a pipeline Silver primeiro."
-        )
+        st.warning("Nenhum relatório de DQ encontrado. Execute a pipeline Silver primeiro.")
 
 # 2. CATALOGO DE DADOS
 elif menu == "Catálogo de Dados":
