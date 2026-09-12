@@ -8,8 +8,8 @@ from pyspark.sql import SparkSession
 # CONFIGURAÇÕES DO TESTE
 # ==========================================
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-BRONZE_DAG_PATH = PROJECT_ROOT / "dags" / "01_bronze_ingestion.py"
-SILVER_DAG_PATH = PROJECT_ROOT / "dags" / "02_silver_transform.py"
+BRONZE_DAG_PATH = PROJECT_ROOT / "dags" / "modules" / "bronze_ingestion.py"
+SILVER_DAG_PATH = PROJECT_ROOT / "dags" / "modules" / "silver_transform.py"
 
 
 def load_module(module_name, path):
@@ -38,7 +38,7 @@ def test_bronze_to_silver_pipeline(tmp_path):
     report_path = tmp_path / "silver" / "dq_report_silver.json"
 
     # Execução Ingestão Bronze
-    bronze_dag.load_bronze(
+    bronze_dag.process_bronze_ingestion(
         source_path_override=str(csv_path),
         target_path_override=str(bronze_path),
     )

@@ -7,13 +7,11 @@ on:
   pull_request:
     branches: ["main"]
 
-
 jobs:
   tests:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -34,20 +32,9 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
-      - name: Run DAG integrity tests
+      - name: Run All Integration Tests
         env:
           AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
+          PYTHONPATH: dags
         run: |
-          pytest tests/test_dag_integrity.py -v
-
-      - name: Run Bronze integration tests
-        env:
-          AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
-        run: |
-          pytest tests/test_bronze_ingestion.py -v
-
-      - name: Run Silver integration tests
-        env:
-          AIRFLOW_VAR_DATA_LAKE_PATH: /tmp/airflow-data
-        run: |
-          pytest tests/test_silver_integration.py -v
+          pytest tests/ -v

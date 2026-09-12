@@ -2,48 +2,29 @@ import pytest
 from airflow.models import DagBag
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def dag_bag():
-    return DagBag(
-        dag_folder="dags/",
-        include_examples=False,
-    )
-
-
-def test_dags_load_without_errors(dag_bag):
-    assert not dag_bag.import_errors, f"Erros ao importar DAGs: {dag_bag.import_errors}"
+    return DagBag(dag_folder="dags/", include_examples=False)
 
 
 def test_expected_dags_exist(dag_bag):
-    assert "01_bronze_ingestion" in dag_bag.dags
-    assert "02_silver_transform" in dag_bag.dags
-    assert "03_gold_aggregations" in dag_bag.dags
+    assert not dag_bag.import_errors
+    assert "pipeline_fraud_analysis" in dag_bag.dags
 
 
-def test_bronze_dag_structure(dag_bag):
-    dag = dag_bag.dags["01_bronze_ingestion"]
+def test_main_pipeline_structure(dag_bag):
+    dag = dag_bag.dags["pipeline_fraud_analysis"]
 
-    assert "load_csv_to_bronze" in dag.task_ids
-    assert "dq_check_bronze" in dag.task_ids
+    expected_tasks = [
+        "ingest_bronze",
+        "transform_silver",
+        "check_circuit_breaker",
+        "calc_region_risk",
+        "calc_top_sales",
+    ]
 
-    assert dag.task_dict["load_csv_to_bronze"].downstream_task_ids == {
-        "dq_check_bronze"
-    }
+    for task in expected_tasks:
+        assert task in dag.task_ids
 
-
-def test_silver_dag_structure(dag_bag):
-    dag = dag_bag.dags["02_silver_transform"]
-
-    assert "process_silver_and_dq" in dag.task_ids
-    assert "evaluate_circuit_breaker" in dag.task_ids
-
-    assert dag.task_dict["process_silver_and_dq"].downstream_task_ids == {
-        "evaluate_circuit_breaker"
-    }
-
-
-def test_gold_dag_structure(dag_bag):
-    dag = dag_bag.dags["03_gold_aggregations"]
-
-    assert "aggregate_region_metrics" in dag.task_ids
-    assert "aggregate_risk_analysis" in dag.task_ids
+    # Valida encadeamento correto (Silver ramificando para as duas da Gold)
+    assert dag.task_dict["check_circuit_breaker"].downstream_task_ids == {"calc_region_risk", "calc_top_sales"}

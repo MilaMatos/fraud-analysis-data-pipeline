@@ -1,6 +1,4 @@
 import os
-from airflow import DAG
-from airflow.operators.python import PythonOperator
 from datetime import datetime
 from pyspark.sql import SparkSession
 from airflow.models import Variable
@@ -21,7 +19,9 @@ EXPECTED_COLUMNS = [
 ]
 
 
-def load_bronze(source_path_override=None, target_path_override=None, **kwargs):
+def process_bronze_ingestion(
+    source_path_override=None, target_path_override=None, **kwargs
+):
     spark = SparkSession.builder.appName("BronzeIngestion").getOrCreate()
 
     source_path = source_path_override or os.path.join(BASE_PATH, SOURCE_CSV_NAME)
@@ -53,20 +53,3 @@ def dq_check_bronze():
 
     print("Data Quality Bronze OK. Estrutura de colunas e dados validados com sucesso.")
     spark.stop()
-
-
-with DAG(
-    dag_id="01_bronze_ingestion",
-    start_date=datetime(2026, 9, 10),
-    schedule=None,
-    catchup=False,
-    tags=["bronze", "ingestion", "data-quality"],
-) as dag:
-
-    ingest_task = PythonOperator(
-        task_id="load_csv_to_bronze", python_callable=load_bronze
-    )
-
-    dq_task = PythonOperator(task_id="dq_check_bronze", python_callable=dq_check_bronze)
-
-    ingest_task >> dq_task

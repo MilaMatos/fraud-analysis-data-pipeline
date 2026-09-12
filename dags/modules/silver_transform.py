@@ -1,7 +1,5 @@
 import os
 import json
-from airflow import DAG
-from airflow.operators.python import PythonOperator
 from datetime import datetime
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
@@ -205,8 +203,14 @@ def process_silver_and_dq(
     return {"conformity_pct": conformity_rate}
 
 
-def evaluate_circuit_breaker(ti):
-    metrics = ti.xcom_pull(task_ids="process_silver_and_dq")
+def evaluate_circuit_breaker(ti=None, **kwargs):
+    metrics = ti.xcom_pull(task_ids="transform_silver")
+
+    if not metrics:
+        raise ValueError(
+            "Falha ao recuperar as métricas do XCom. Verifique o retorno da task transform_silver."
+        )
+
     conformity = metrics.get("conformity_pct", 0)
 
     if conformity < CIRCUIT_BREAKER_THRESHOLD_PCT:
@@ -215,22 +219,3 @@ def evaluate_circuit_breaker(ti):
         )
 
     print(f"Qualidade aprovada: Conformidade de {conformity}%.")
-
-
-with DAG(
-    dag_id="02_silver_transform",
-    start_date=datetime(2026, 9, 10),
-    schedule=None,
-    catchup=False,
-    tags=["silver", "transformation", "data-quality"],
-) as dag:
-
-    process_task = PythonOperator(
-        task_id="process_silver_and_dq", python_callable=process_silver_and_dq
-    )
-
-    circuit_breaker_task = PythonOperator(
-        task_id="evaluate_circuit_breaker", python_callable=evaluate_circuit_breaker
-    )
-
-    process_task >> circuit_breaker_task

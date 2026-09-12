@@ -7,7 +7,7 @@ from pyspark.sql import SparkSession
 # CONFIGURAÇÕES DO TESTE
 # ==========================================
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DAG_PATH = PROJECT_ROOT / "dags" / "01_bronze_ingestion.py"
+DAG_PATH = PROJECT_ROOT / "dags" / "modules" / "bronze_ingestion.py"
 
 
 def load_dag_module():
@@ -37,7 +37,7 @@ def test_bronze_ingestion(tmp_path):
 
     bronze_path = tmp_path / "bronze" / "fraud_data"
 
-    bronze_dag.load_bronze(
+    bronze_dag.process_bronze_ingestion(
         source_path_override=str(csv_path),
         target_path_override=str(bronze_path),
     )
