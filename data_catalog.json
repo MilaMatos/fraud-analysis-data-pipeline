@@ -1,0 +1,45 @@
+{
+    "Bronze (Raw)": [
+        {"coluna": "timestamp", "descricao": "Data e hora originais do evento"},
+        {"coluna": "sending_address", "descricao": "Hash da carteira de origem"},
+        {"coluna": "receiving_address", "descricao": "Hash da carteira de destino"},
+        {"coluna": "amount", "descricao": "Valor nominal bruto"},
+        {"coluna": "transaction_type", "descricao": "Modalidade da transação original"},
+        {"coluna": "location_region", "descricao": "Continente da transação bruto"},
+        {"coluna": "ip_prefix", "descricao": "Prefixo de rede do usuário"},
+        {"coluna": "login_frequency", "descricao": "Frequência de acesso registrada"},
+        {"coluna": "session_duration", "descricao": "Duração da sessão em minutos"},
+        {"coluna": "purchase_pattern", "descricao": "Perfil de comportamento de compra"},
+        {"coluna": "age_group", "descricao": "Faixa etária do usuário"},
+        {"coluna": "risk_score", "descricao": "Pontuação de risco bruta"},
+        {"coluna": "anomaly", "descricao": "Flag de anomalia pré-existente"}
+    ],
+    "Silver (Clean)": [
+        {"coluna": "timestamp", "tipo": "timestamp", "obrigatorio": "Sim", "regras_dq": "<= Data Atual", "descricao": "Data e hora tipada e validada (UTC)"},
+        {"coluna": "sending_address", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Hash da carteira de origem"},
+        {"coluna": "receiving_address", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Hash da carteira de destino"},
+        {"coluna": "amount", "tipo": "float", "obrigatorio": "Sim", "regras_dq": ">= 0", "descricao": "Valor financeiro validado"},
+        {"coluna": "transaction_type", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Domínio fechado (transfer, purchase, etc)", "descricao": "Modalidade da transação validada"},
+        {"coluna": "location_region", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Domínio fechado (Continentes)", "descricao": "Continente validado"},
+        {"coluna": "ip_prefix", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Prefixo de rede do usuário"},
+        {"coluna": "login_frequency", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Frequência de acesso registrada"},
+        {"coluna": "session_duration", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Duração da sessão em minutos"},
+        {"coluna": "purchase_pattern", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Perfil de comportamento de compra"},
+        {"coluna": "age_group", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Faixa etária do usuário"},
+        {"coluna": "risk_score", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "Entre 0.0 e 100.0", "descricao": "Score numérico validado"},
+        {"coluna": "anomaly", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Flag de anomalia pré-existente"}
+    ],
+    "Silver (Quarentena)": [
+        {"coluna": "TODAS AS COLUNAS DA SILVER", "descricao": "Herda a mesma estrutura da tabela Silver, adicionando a coluna abaixo:"},
+        {"coluna": "rejection_reason", "descricao": "Motivo exato da reprovação (ex: Amount Nulo | Região Inválida)"}
+    ],
+    "Gold (Region Risk)": [
+        {"coluna": "location_region", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Agrupamento", "descricao": "Continente consolidado"},
+        {"coluna": "avg_risk_score", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "Ordenado DESC", "descricao": "Média do score de risco calculada"}
+    ],
+    "Gold (Top Sales)": [
+        {"coluna": "receiving_address", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Filtro Top 3", "descricao": "Hash da carteira de destino"},
+        {"coluna": "amount", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "Max()", "descricao": "Valor financeiro da transação"},
+        {"coluna": "timestamp", "tipo": "timestamp", "obrigatorio": "Sim", "regras_dq": "Recente", "descricao": "Data e hora da transação mais recente"}
+    ]
+}
