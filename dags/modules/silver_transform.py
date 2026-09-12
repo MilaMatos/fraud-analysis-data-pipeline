@@ -193,7 +193,7 @@ def process_silver_and_dq(
     }
 
     # Cria diretorio de historico e salva arquivo unico
-    reports_dir = os.path.join(BASE_PATH, "silver", "dq_reports")
+    reports_dir = os.path.dirname(json_report_path_override) if json_report_path_override else os.path.join(BASE_PATH, "silver", "dq_reports")    
     os.makedirs(reports_dir, exist_ok=True)
     
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")

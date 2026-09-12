@@ -70,3 +70,17 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: admin
       _AIRFLOW_WWW_USER_PASSWORD: admin
+
+  # UI Streamlit
+  lakehouse-observability:
+    build: .
+    entrypoint: /bin/bash
+    command: -c "streamlit run app.py --server.port 8501 --server.address 0.0.0.0"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/opt/airflow/data
+      - ./app.py:/opt/airflow/app.py
+      - ./data_catalog.json:/opt/airflow/data_catalog.json
+    depends_on:
+      - airflow-init

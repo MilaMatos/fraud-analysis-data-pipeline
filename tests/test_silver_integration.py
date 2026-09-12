@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import pytest
 from pyspark.sql import SparkSession
+import glob
 
 # ==========================================
 # CONFIGURAÇÕES DO TESTE
@@ -71,7 +72,10 @@ def test_bronze_to_silver_pipeline(tmp_path):
     # Validação de Métricas e Relatório
     assert result["conformity_pct"] == 12.5
 
-    with open(report_path, "r") as file:
+    report_dir = Path(report_path).parent
+    report_files = glob.glob(str(report_dir / "*.json"))
+    
+    with open(report_files[0], "r") as file:
         report = json.load(file)
 
     assert report["metrics"]["total_records"] == 8
