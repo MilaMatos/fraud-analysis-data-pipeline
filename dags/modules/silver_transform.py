@@ -27,26 +27,31 @@ VALID_PURCHASE_PATTERN = ["focused", "high_value", "random"]
 
 
 def _cast_columns(df):
-    return (
+    df = (
         df.withColumn("amount", col("amount").cast("float"))
         .withColumn("risk_score", col("risk_score").cast("float"))
         .withColumn("timestamp", col("timestamp").cast("timestamp"))
-        .withColumn("ip_prefix", col("ip_prefix").cast("string"))
-        .withColumn("login_frequency", col("login_frequency").cast("int"))
-        .withColumn("session_duration", col("session_duration").cast("int"))
     )
+    
+    if "ip_prefix" in df.columns:
+        df = df.withColumn("ip_prefix", col("ip_prefix").cast("string"))
+    if "login_frequency" in df.columns:
+        df = df.withColumn("login_frequency", col("login_frequency").cast("int"))
+    if "session_duration" in df.columns:
+        df = df.withColumn("session_duration", col("session_duration").cast("int"))
+        
+    return df
 
 
 def _get_validation_rules(columns):
+    # Colunas estritamente obrigatorias
     condicoes = {
         "amount": col("amount").isNotNull() & (col("amount") >= 0),
         "risk_score": col("risk_score").isNotNull() & col("risk_score").between(0.0, 100.0),
         "timestamp": col("timestamp").isNotNull() & (col("timestamp") <= current_timestamp()),
         "transaction_type": col("transaction_type").isNotNull() & col("transaction_type").isin(VALID_TRANSACTION_TYPES),
         "location_region": col("location_region").isNotNull() & col("location_region").isin(VALID_LOCATION_REGIONS),
-        "ip_prefix": col("ip_prefix").isNotNull() & col("ip_prefix").rlike(r"^\d{1,3}\.\d{1,3}$"),
-        "login_frequency": col("login_frequency").isNotNull() & (col("login_frequency") > 0),
-        "session_duration": col("session_duration").isNotNull() & (col("session_duration") > 0)
+        "receiving_address": col("receiving_address").isNotNull()
     }
 
     reasons = [
@@ -55,9 +60,7 @@ def _get_validation_rules(columns):
         when(~condicoes["timestamp"], "Erro de Timestamp"),
         when(~condicoes["transaction_type"], "Erro de Transaction Type"),
         when(~condicoes["location_region"], "Erro de Regiao"),
-        when(~condicoes["ip_prefix"], "Erro de IP Prefix"),
-        when(~condicoes["login_frequency"], "Erro de Login Frequency"),
-        when(~condicoes["session_duration"], "Erro de Session Duration")
+        when(~condicoes["receiving_address"], "Erro de Receiving Address")
     ]
 
     opt_cat_cols = []
@@ -77,6 +80,18 @@ def _get_validation_rules(columns):
         condicoes["purchase_pattern"] = col("purchase_pattern").isNotNull() & col("purchase_pattern").isin(VALID_PURCHASE_PATTERN)
         reasons.append(when(~condicoes["purchase_pattern"], "Erro de Purchase Pattern"))
         opt_cat_cols.append("purchase_pattern")
+
+    if "ip_prefix" in columns:
+        condicoes["ip_prefix"] = col("ip_prefix").isNotNull() & col("ip_prefix").rlike(r"^\d{1,3}\.\d{1,3}$")
+        reasons.append(when(~condicoes["ip_prefix"], "Erro de IP Prefix"))
+
+    if "login_frequency" in columns:
+        condicoes["login_frequency"] = col("login_frequency").isNotNull() & (col("login_frequency") > 0)
+        reasons.append(when(~condicoes["login_frequency"], "Erro de Login Frequency"))
+
+    if "session_duration" in columns:
+        condicoes["session_duration"] = col("session_duration").isNotNull() & (col("session_duration") > 0)
+        reasons.append(when(~condicoes["session_duration"], "Erro de Session Duration"))
 
     return condicoes, reasons, opt_cat_cols
 
