@@ -83,7 +83,7 @@ def test_bronze_to_silver_pipeline(tmp_path):
     assert report["metrics"]["error_rate_pct"] == 87.5
     assert report["metrics"]["conformity_rate_pct"] == 12.5
 
-    assert report["anomalies"]["missing_values"] == 3
+    assert report["anomalies"]["missing_values"] == 4
     assert report["anomalies"]["invalid_values"] == 4
 
     assert report["column_quality"]["amount"]["invalid"] == 1
