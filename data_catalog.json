@@ -18,20 +18,20 @@
         {"coluna": "timestamp", "tipo": "timestamp", "obrigatorio": "Sim", "regras_dq": "<= Data Atual", "descricao": "Data e hora tipada e validada (UTC)"},
         {"coluna": "sending_address", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Hash da carteira de origem"},
         {"coluna": "receiving_address", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Hash da carteira de destino"},
-        {"coluna": "amount", "tipo": "float", "obrigatorio": "Sim", "regras_dq": ">= 0", "descricao": "Valor financeiro validado"},
+        {"coluna": "amount", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "`>= 0`", "descricao": "Valor financeiro validado"},
         {"coluna": "transaction_type", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Domínio fechado (transfer, purchase, etc)", "descricao": "Modalidade da transação validada"},
         {"coluna": "location_region", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Domínio fechado (Continentes)", "descricao": "Continente validado"},
-        {"coluna": "ip_prefix", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Prefixo de rede do usuário"},
-        {"coluna": "login_frequency", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Frequência de acesso registrada"},
-        {"coluna": "session_duration", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Duração da sessão em minutos"},
-        {"coluna": "purchase_pattern", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Perfil de comportamento de compra"},
-        {"coluna": "age_group", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Faixa etária do usuário"},
-        {"coluna": "risk_score", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "Entre 0.0 e 100.0", "descricao": "Score numérico validado"},
-        {"coluna": "anomaly", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Pass-through", "descricao": "Flag de anomalia pré-existente"}
+        {"coluna": "ip_prefix", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Regex ^\\d{1,3}\\.\\d{1,3}$", "descricao": "Prefixo de rede do usuário formatado"},
+        {"coluna": "login_frequency", "tipo": "int", "obrigatorio": "Sim", "regras_dq": "`> 0`", "descricao": "Frequência de acesso convertida"},
+        {"coluna": "session_duration", "tipo": "int", "obrigatorio": "Sim", "regras_dq": "`> 0`", "descricao": "Duração da sessão convertida"},
+        {"coluna": "purchase_pattern", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Domínio fechado (se existir)", "descricao": "Perfil de comportamento validado via Schema Evolution"},
+        {"coluna": "age_group", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Domínio fechado (se existir)", "descricao": "Faixa etária validada via Schema Evolution"},
+        {"coluna": "risk_score", "tipo": "float", "obrigatorio": "Sim", "regras_dq": "Entre `0.0` e `100.0`", "descricao": "Score numérico validado"},
+        {"coluna": "anomaly", "tipo": "string", "obrigatorio": "Não", "regras_dq": "Domínio fechado (se existir)", "descricao": "Flag de anomalia validada via Schema Evolution"}
     ],
     "Silver (Quarentena)": [
         {"coluna": "TODAS AS COLUNAS DA SILVER", "descricao": "Herda a mesma estrutura da tabela Silver, adicionando a coluna abaixo:"},
-        {"coluna": "rejection_reason", "descricao": "Motivo exato da reprovação (ex: Amount Nulo | Região Inválida)"}
+        {"coluna": "rejection_reason", "descricao": "Motivo exato da reprovação (ex: Erro de Amount | Erro de Região)"}
     ],
     "Gold (Region Risk)": [
         {"coluna": "location_region", "tipo": "string", "obrigatorio": "Sim", "regras_dq": "Agrupamento", "descricao": "Continente consolidado"},
