@@ -51,7 +51,7 @@ def _get_validation_rules(columns):
         "timestamp": col("timestamp").isNotNull() & (col("timestamp") <= current_timestamp()),
         "transaction_type": col("transaction_type").isNotNull() & col("transaction_type").isin(VALID_TRANSACTION_TYPES),
         "location_region": col("location_region").isNotNull() & col("location_region").isin(VALID_LOCATION_REGIONS),
-        "receiving_address": col("receiving_address").isNotNull()
+        "receiving_address": col("receiving_address").isNotNull() & col("receiving_address").rlike(r"^0x[a-fA-F0-9]+$")
     }
 
     reasons = [
@@ -92,6 +92,10 @@ def _get_validation_rules(columns):
     if "session_duration" in columns:
         condicoes["session_duration"] = col("session_duration").isNotNull() & (col("session_duration") > 0)
         reasons.append(when(~condicoes["session_duration"], "Erro de Session Duration"))
+
+    if "sending_address" in columns:
+        condicoes["sending_address"] = col("sending_address").isNull() | col("sending_address").rlike(r"^0x[a-fA-F0-9]+$")
+        reasons.append(when(~condicoes["sending_address"], "Erro de Sending Address (Possivel Vazamento PII)"))
 
     return condicoes, reasons, opt_cat_cols
 
