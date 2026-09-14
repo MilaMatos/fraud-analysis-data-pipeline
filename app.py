@@ -14,17 +14,16 @@ def load_json(path):
 def get_duckdb_conn():
     return duckdb.connect(database=':memory:')
 
-# Callback de Feedback Visual
 def notify_update():
     st.toast("Relatório carregado e atualizado na interface!", icon="🔄")
 
 def colored_progress_bar(pct, threshold):
-    if pct >= threshold:
-        color = "#28a745" # Verde
-    elif pct >= (threshold - 5.0):
-        color = "#ffc107" # Amarelo
+    if pct <= threshold:            
+        color = "#dc3545" 
+    elif pct <= threshold + (100.0 - threshold) / 2:
+        color = "#ffc107"
     else:
-        color = "#dc3545" # Vermelho
+        color = "#28a745"
         
     return f"""
     <div style="width: 100%; background-color: #333333; border-radius: 4px; margin-top: 5px; margin-bottom: 10px;">
@@ -75,22 +74,34 @@ if menu == "1. Monitoramento DQ (Histórico)":
     dq_data = load_json(selected_report)
     threshold = dq_data["metrics"].get("circuit_breaker_threshold_pct", 95.0)
 
-    tab1, tab2 = st.tabs(["📊 Visão Geral DQ", "🔍 Exploratória & Drift"])
+    tab1, tab2 = st.tabs(["📊 Visão Geral DQ", "🔍 Análise Exploratória e Data Drift"])
 
     # --- ABA 1: VISÃO GERAL DE QUALIDADE ---
     with tab1:
         st.markdown(f"**Data do Relatório:** {dq_data['execution_date']} &nbsp;|&nbsp; **Meta (Circuit Breaker):** {threshold}%")
         
         m = dq_data["metrics"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total de Registros (Linhas)", f"{m['total_records']:,}")
-        c2.metric("Erros Capturados (DLQ)", f"{m['total_errors']:,}")
-        c3.metric("Taxa de Erro", f"{m['error_rate_pct']}%")
-        c4.metric("Conformidade Global", f"{m['conformity_rate_pct']}%")
         
-        with st.expander("ℹ️ Entenda as Métricas de Qualidade"):
+        # Primeira linha de KPIs (Volumetria e Desduplicação)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total de Registros Ingeridos (Bruto)", f"{m['total_records'] + m.get('duplicate_records', 0):,}")
+        c2.metric("Linhas Duplicadas (Removidas)", f"{m.get('duplicate_records', 0):,}")
+        c3.metric("Registros Processados (Silver)", f"{m['total_records']:,}")
+        
+        st.write("")
+        
+        # Segunda linha de KPIs (Saúde do Lote)
+        c4, c5, c6, c7 = st.columns(4)
+        c4.metric("Erros (Bloqueio DLQ)", f"{m['total_errors']:,}")
+        c5.metric("Alertas (Colunas Opcionais)", f"{m.get('total_alerts', 0):,}")
+        c6.metric("Taxa de Erro", f"{m['error_rate_pct']}%")
+        c7.metric("Conformidade Global", f"{m['conformity_rate_pct']}%")
+        
+        with st.expander("ℹ️ Entenda as Métricas e Regras de Qualidade"):
             st.markdown("""
-            * **Erros Capturados:** Total de linhas enviadas para a Quarentena. Se um registro possui erro em uma ou mais colunas, a linha inteira é invalidada.
+            * **Linhas Duplicadas:** Registros 100% idênticos removidos na entrada da camada Silver para garantir idempotência.
+            * **Erros (Hard Rules):** Falhas em colunas obrigatórias. A linha inteira é invalidada e vai para a Quarentena.
+            * **Alertas (Soft Rules):** Falhas de formatação em colunas opcionais (ex: `sending_address`). A linha **é aprovada** para a Gold, mas a inconsistência é contabilizada como alerta.
             * **Completude (Completeness):** Mede a ausência de nulos. Se a informação existe, é considerada completa.
             * **Validade (Validity):** Mede se a informação está de acordo com as regras de negócio.
             """)
@@ -107,8 +118,7 @@ if menu == "1. Monitoramento DQ (Histórico)":
             col1, col2, col3 = st.columns([2, 4, 4])
             with col1:
                 st.write(f"**{col_name}**")
-                # Aumento de contraste e peso na fonte secundaria
-                st.markdown(f"<span style='color: #CCCCCC; font-size: 14px; font-weight: 500;'>Inválidos: {row['invalid']} | Nulos: {row['null']}</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='color: #CCCCCC; font-size: 14px; font-weight: 500;'>Inválidos: {int(row['invalid'])} | Nulos: {int(row['null'])}</span>", unsafe_allow_html=True)
             with col2:
                 st.markdown(f"<span style='font-size:12px;'>Completude</span>", unsafe_allow_html=True)
                 st.markdown(colored_progress_bar(comp_pct, threshold), unsafe_allow_html=True)
@@ -118,13 +128,16 @@ if menu == "1. Monitoramento DQ (Histórico)":
 
     # --- ABA 2: EXPLORATÓRIA & DATA DRIFT ---
     with tab2:
-        st.header("Análise Exploratória e Data Drift (Silver)")
-        eda = dq_data.get("eda", {})
+        unmapped = dq_data["metrics"].get("unmapped_columns", [])
         
+        if unmapped:
+            st.error(f"🚨 **Alerta de Schema Drift:** Foram detectadas {len(unmapped)} coluna(s) não mapeada(s) no contrato original: `{unmapped}`. Elas foram processadas normalmente pela pipeline (Schema on Read).")
+            st.write("---")
+
         st.subheader("Estatísticas Numéricas")
+        eda = dq_data.get("eda", {})
         num_data = eda.get("numeric", {})
         if num_data:
-            # Estruturacao em DataFrame para melhor UI e escaneamento visual
             df_num = pd.DataFrame.from_dict(num_data, orient='index')
             df_num.rename(columns={'min': 'Mínimo', 'max': 'Máximo', 'avg': 'Média'}, inplace=True)
             st.dataframe(df_num, use_container_width=True)
@@ -148,6 +161,9 @@ if menu == "1. Monitoramento DQ (Histórico)":
             st.caption(f"Valores identificados no lote: {list(found)}")
             st.write("---")
 
+        if not unmapped:
+            st.success("✅ Nenhuma coluna não mapeada (Schema Drift) detectada na estrutura deste lote.")
+
 # ==========================================
 # PÁGINA 2: CATÁLOGO DE DADOS
 # ==========================================
@@ -158,7 +174,6 @@ elif menu == "2. Catálogo de Dados":
     
     catalog = load_json("data_catalog.json")
     
-    # Exibe todas as tabelas sequencialmente
     for layer_name, schema_list in catalog.items():
         st.subheader(f"Camada: {layer_name}")
         df_catalog = pd.DataFrame(schema_list)
