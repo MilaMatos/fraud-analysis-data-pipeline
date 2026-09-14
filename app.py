@@ -5,6 +5,23 @@ import json
 import glob
 import os
 
+error_file = "data/system_error_state.json"
+if os.path.exists(error_file):
+    with open(error_file, "r") as f:
+        sys_err = json.load(f)
+    
+    st.sidebar.error("⚠️ ERRO CRÍTICO SISTÊMICO")
+    
+    st.error(f"💥 **Falha Sistêmica na Pipeline:** A execução falhou na etapa `{sys_err.get('task_failed')}`.")
+    with st.expander("Ver Log de Erro (Traceback)"):
+        st.code(sys_err.get('traceback', sys_err.get('error_message')), language='bash')
+    
+    if st.button("Limpar Alerta de Erro"):
+        os.remove(error_file)
+        st.rerun()
+    
+    st.divider()
+
 st.set_page_config(page_title="Data Lakehouse Observability", layout="wide", initial_sidebar_state="expanded")
 
 def load_json(path):
@@ -78,11 +95,15 @@ if menu == "1. Monitoramento DQ (Histórico)":
 
     # --- ABA 1: VISÃO GERAL DE QUALIDADE ---
     with tab1:
-        st.markdown(f"**Data do Relatório:** {dq_data['execution_date']} &nbsp;|&nbsp; **Meta (Circuit Breaker):** {threshold}%")
-        
         m = dq_data["metrics"]
+        conformidade = m['conformity_rate_pct']
         
-        # Primeira linha de KPIs (Volumetria e Desduplicação)
+        # Banner de Status Instantaneo
+        if conformidade < threshold:
+            st.error(f"❌ **PIPELINE BLOQUEADA (CIRCUIT BREAKER):** A conformidade global ({conformidade}%) não atingiu o limiar mínimo exigido ({threshold}%). O processamento da camada Gold foi abortado para este lote.")
+            
+        st.markdown(f"**Data do Relatório:** {dq_data['execution_date']}")
+        
         c1, c2, c3 = st.columns(3)
         c1.metric("Total de Registros Ingeridos (Bruto)", f"{m['total_records'] + m.get('duplicate_records', 0):,}")
         c2.metric("Linhas Duplicadas (Removidas)", f"{m.get('duplicate_records', 0):,}")
