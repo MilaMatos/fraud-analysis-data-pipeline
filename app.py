@@ -4,25 +4,10 @@ import duckdb
 import json
 import glob
 import os
+from datetime import datetime
+import plotly.graph_objects as go
 
-error_file = "data/system_error_state.json"
-if os.path.exists(error_file):
-    with open(error_file, "r") as f:
-        sys_err = json.load(f)
-    
-    st.sidebar.error("⚠️ ERRO CRÍTICO SISTÊMICO")
-    
-    st.error(f"💥 **Falha Sistêmica na Pipeline:** A execução falhou na etapa `{sys_err.get('task_failed')}`.")
-    with st.expander("Ver Log de Erro (Traceback)"):
-        st.code(sys_err.get('traceback', sys_err.get('error_message')), language='bash')
-    
-    if st.button("Limpar Alerta de Erro"):
-        os.remove(error_file)
-        st.rerun()
-    
-    st.divider()
-
-st.set_page_config(page_title="Data Lakehouse Observability", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Data Quality Scorecard", layout="wide", initial_sidebar_state="expanded")
 
 def load_json(path):
     with open(path, "r") as f:
@@ -32,16 +17,10 @@ def get_duckdb_conn():
     return duckdb.connect(database=':memory:')
 
 def notify_update():
-    st.toast("Relatório carregado e atualizado na interface!", icon="🔄")
+    st.toast("Scorecard atualizado com sucesso!", icon="📊")
 
 def colored_progress_bar(pct, threshold):
-    if pct <= threshold:            
-        color = "#dc3545" 
-    elif pct <= threshold + (100.0 - threshold) / 2:
-        color = "#ffc107"
-    else:
-        color = "#28a745"
-        
+    color = "#28a745" if pct >= threshold else ("#ffc107" if pct >= (threshold - 5.0) else "#dc3545")
     return f"""
     <div style="width: 100%; background-color: #333333; border-radius: 4px; margin-top: 5px; margin-bottom: 10px;">
         <div style="width: {pct}%; background-color: {color}; padding-right: 5px; text-align: right; color: white; border-radius: 4px; font-size: 12px; height: 18px; line-height: 18px; font-weight: bold;">
@@ -58,103 +37,193 @@ EXPECTED_CATEGORIES = {
     "purchase_pattern": ["focused", "high_value", "random"]
 }
 
+HARD_COLS = ["amount", "risk_score", "timestamp", "transaction_type", "location_region", "receiving_address"]
+
 # ==========================================
-# NAVEGAÇÃO GLOBAL (SIDEBAR)
+# NAVEGAÇÃO
 # ==========================================
 st.sidebar.title("Navegação")
-menu = st.sidebar.radio(
-    "Ir para:",
-    ["1. Monitoramento DQ (Histórico)", "2. Catálogo de Dados", "3. Exploração (DuckDB)"]
-)
+menu = st.sidebar.radio("Ir para:", ["1. Visão Geral DQ", "2. Catálogo de Dados", "3. Exploração (DuckDB)"])
 
 # ==========================================
-# PÁGINA 1: MONITORAMENTO DQ
+# PÁGINA 1: VISÃO GERAL DQ
 # ==========================================
-if menu == "1. Monitoramento DQ (Histórico)":
-    st.title("Monitoramento de Qualidade de Dados")
+if menu == "1. Visão Geral DQ":
+    st.title("Painel de Desempenho (KPIs) - Qualidade de Dados")
     
     report_files = sorted(glob.glob("data/silver/dq_reports/*.json"), reverse=True)
-
     if not report_files:
-        st.warning("Nenhum relatório de Data Quality encontrado. Execute a pipeline Silver primeiro.")
+        st.warning("Nenhum relatório encontrado.")
         st.stop()
 
     st.sidebar.divider()
-    st.sidebar.write("**Controle de Visualização**")
     selected_report = st.sidebar.selectbox(
-        "Selecione a execução:", 
+        "Selecione o Lote (Arquivo):", 
         report_files, 
         format_func=lambda x: os.path.basename(x),
         on_change=notify_update
     )
 
     dq_data = load_json(selected_report)
-    threshold = dq_data["metrics"].get("circuit_breaker_threshold_pct", 95.0)
+    m = dq_data["metrics"]
+    threshold = m.get("circuit_breaker_threshold_pct", 95.0)
+    
+    try:
+        dt_obj = datetime.fromisoformat(dq_data['execution_date'])
+        data_formatada = dt_obj.strftime("%d/%m/%Y %H:%M:%S")
+    except:
+        data_formatada = dq_data['execution_date']
 
-    tab1, tab2 = st.tabs(["📊 Visão Geral DQ", "🔍 Análise Exploratória e Data Drift"])
+    tab1, tab2 = st.tabs(["📊 Visão Geral", "🔍 Exploratória e Drift"])
 
-    # --- ABA 1: VISÃO GERAL DE QUALIDADE ---
+    # --- ABA 1: VISÃO GERAL ---
     with tab1:
-        m = dq_data["metrics"]
-        conformidade = m['conformity_rate_pct']
+        st.markdown(f"**Data de Processamento do Lote:** {data_formatada}")
         
-        # Banner de Status Instantaneo
-        if conformidade < threshold:
-            st.error(f"❌ **PIPELINE BLOQUEADA (CIRCUIT BREAKER):** A conformidade global ({conformidade}%) não atingiu o limiar mínimo exigido ({threshold}%). O processamento da camada Gold foi abortado para este lote.")
-            
-        st.markdown(f"**Data do Relatório:** {dq_data['execution_date']}")
+        # 1. KPIs Principais
+        total_ingested = m['total_records'] + m.get('duplicate_records', 0)
+        duplicates = m.get('duplicate_records', 0)
+        quarantine = m['total_errors']
+        clean_records = m['total_records'] - quarantine
         
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Total de Registros Ingeridos (Bruto)", f"{m['total_records'] + m.get('duplicate_records', 0):,}")
-        c2.metric("Linhas Duplicadas (Removidas)", f"{m.get('duplicate_records', 0):,}")
-        c3.metric("Registros Processados (Silver)", f"{m['total_records']:,}")
+        kpi_style = "padding: 15px; border-radius: 8px; text-align: center; background-color: #1e272e; border: 1px solid #333;"
+        
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
+        with c1:
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #4da6ff;"><span style="color:#a4b0be; font-size:14px;">Registros Recebidos</span><br><span style="color:#4da6ff; font-size:28px; font-weight:bold;">{total_ingested:,}</span></div>', unsafe_allow_html=True)
+        with c2:
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #facc15;"><span style="color:#a4b0be; font-size:14px;">Duplicidade</span><br><span style="color:#facc15; font-size:28px; font-weight:bold;">{duplicates:,}</span></div>', unsafe_allow_html=True)
+        with c3:
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #dc3545;"><span style="color:#a4b0be; font-size:14px;">Quarentena</span><br><span style="color:#dc3545; font-size:28px; font-weight:bold;">{quarantine:,}</span></div>', unsafe_allow_html=True)
+        with c4:
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #28a745;"><span style="color:#a4b0be; font-size:14px;">Registros Válidos</span><br><span style="color:#28a745; font-size:28px; font-weight:bold;">{clean_records:,}</span></div>', unsafe_allow_html=True)
         
         st.write("")
         
-        # Segunda linha de KPIs (Saúde do Lote)
-        c4, c5, c6, c7 = st.columns(4)
-        c4.metric("Erros (Bloqueio DLQ)", f"{m['total_errors']:,}")
-        c5.metric("Alertas (Colunas Opcionais)", f"{m.get('total_alerts', 0):,}")
-        c6.metric("Taxa de Erro", f"{m['error_rate_pct']}%")
-        c7.metric("Conformidade Global", f"{m['conformity_rate_pct']}%")
-        
         with st.expander("ℹ️ Entenda as Métricas e Regras de Qualidade"):
             st.markdown("""
-            * **Linhas Duplicadas:** Registros 100% idênticos removidos na entrada da camada Silver para garantir idempotência.
-            * **Erros (Hard Rules):** Falhas em colunas obrigatórias. A linha inteira é invalidada e vai para a Quarentena.
-            * **Alertas (Soft Rules):** Falhas de formatação em colunas opcionais (ex: `sending_address`). A linha **é aprovada** para a Gold, mas a inconsistência é contabilizada como alerta.
-            * **Completude (Completeness):** Mede a ausência de nulos. Se a informação existe, é considerada completa.
-            * **Validade (Validity):** Mede se a informação está de acordo com as regras de negócio.
+            **Métricas Gerais:**
+            * **Registros Recebidos:** Volume total de linhas brutas ingeridas no lote.
+            * **Duplicidade:** Registros 100% idênticos que foram descartados para evitar contagem dupla.
+            * **Quarentena:** Registros bloqueados e separados na camada Silver (Quarentena) por violações em regras estruturais.
+            * **Registros Válidos:** Registros que passaram por todas as validações obrigatórias e estão prontos para consumo na Gold.
+
+            **Auditoria e Desvios:**
+            * **Alertas:** Erros ou Nulos detectados em colunas não obrigatórias. A linha é aprovada.
+            * **Erros de Validação:** A linha tem a estrutura correta, mas quebra regras de negócio (ex: valores negativos) em colunas obrigatórias. A linha é descartada para Quarentena.
+            * **Valores Nulos:** Falta de informação em colunas obrigatórias. A linha é descartada para Quarentena.
+
+            **Qualidade por Coluna:**
+            * **Completude:** Mede a ausência de valores nulos (nulos reduzem a completude).
+            * **Validade:** Mede o quanto os dados preenchidos respeitam as regras de formatação e domínio estabelecidas.
             """)
-        
+
         st.divider()
-        st.subheader("Qualidade por Coluna")
         
-        df_col = pd.DataFrame.from_dict(dq_data["column_quality"], orient="index")
+        # 2. Avaliação de Qualidade
+        col_gauge, spacer, col_cards = st.columns([4, 1, 5])
         
-        for col_name, row in df_col.iterrows():
-            comp_pct = float(row.get('completeness_pct', 0.0))
-            val_pct = float(row.get('validity_pct', 0.0))
+        with col_gauge:
+            conformidade = m['conformity_rate_pct']
+            cor_gauge = "#28a745" if conformidade >= threshold else "#dc3545"
             
-            col1, col2, col3 = st.columns([2, 4, 4])
-            with col1:
-                st.write(f"**{col_name}**")
-                st.markdown(f"<span style='color: #CCCCCC; font-size: 14px; font-weight: 500;'>Inválidos: {int(row['invalid'])} | Nulos: {int(row['null'])}</span>", unsafe_allow_html=True)
-            with col2:
-                st.markdown(f"<span style='font-size:12px;'>Completude</span>", unsafe_allow_html=True)
-                st.markdown(colored_progress_bar(comp_pct, threshold), unsafe_allow_html=True)
-            with col3:
-                st.markdown(f"<span style='font-size:12px;'>Validade</span>", unsafe_allow_html=True)
-                st.markdown(colored_progress_bar(val_pct, threshold), unsafe_allow_html=True)
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=conformidade,
+                number={'suffix': "%", 'font': {'size': 40}},
+                domain={'x': [0, 1], 'y': [0, 1]},
+                title={'text': "Conformidade Global", 'font': {'size': 18}},
+                gauge={
+                    'axis': {'range': [0, 100], 'tickwidth': 1},
+                    'bar': {'color': cor_gauge},
+                    'bgcolor': "white",
+                    'borderwidth': 2,
+                    'bordercolor': "gray",
+                    'threshold': {
+                        'line': {'color': "black", 'width': 4},
+                        'thickness': 0.75,
+                        'value': threshold
+                    }
+                }
+            ))
+            fig.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
+            st.plotly_chart(fig, use_container_width=True)
 
-    # --- ABA 2: EXPLORATÓRIA & DATA DRIFT ---
-    with tab2:
-        unmapped = dq_data["metrics"].get("unmapped_columns", [])
+        with spacer:
+            st.empty()
+
+        with col_cards:
+            st.write("### Auditoria de Registros")
+            
+            alerts = m.get('total_alerts', 0)
+            fatal_errors = dq_data["anomalies"].get("missing_values", 0)
+            logic_errors = dq_data["anomalies"].get("invalid_values", 0)
+
+            html_cards = f"""
+                <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+                    <!-- Card Erros de Validacao -->
+                    <div style="flex: 1; background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #fb923c;">
+                        <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Erros de Validação</div>
+                        <div style="font-size: 26px; font-weight: 700; color: #fb923c;">{logic_errors:,}</div>
+                    </div>
+                    <!-- Card Valores Nulos -->
+                    <div style="flex: 1; background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #f87171;">
+                        <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Valores Nulos</div>
+                        <div style="font-size: 26px; font-weight: 700; color: #f87171;">{fatal_errors:,}</div>
+                    </div>
+                </div>
+                <!-- Card Alertas -->
+                <div style="background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #facc15;">
+                    <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Alertas</div>
+                    <div style="font-size: 26px; font-weight: 700; color: #facc15;">{alerts:,}</div>
+                </div>
+                """
+            st.markdown(html_cards, unsafe_allow_html=True)
+
+        st.divider()
+
+        # 3. Qualidade por Coluna
+        df_col = pd.DataFrame.from_dict(dq_data["column_quality"], orient="index")
+        df_col['total_issues'] = df_col['invalid'] + df_col['null']
+        df_col = df_col.sort_values(by='total_issues', ascending=False)
         
-        if unmapped:
-            st.error(f"🚨 **Alerta de Schema Drift:** Foram detectadas {len(unmapped)} coluna(s) não mapeada(s) no contrato original: `{unmapped}`. Elas foram processadas normalmente pela pipeline (Schema on Read).")
-            st.write("---")
+        df_hard = df_col[df_col.index.isin(HARD_COLS)]
+        df_soft = df_col[~df_col.index.isin(HARD_COLS)]
 
+        def render_col_quality(df_subset):
+            for col_name, row in df_subset.iterrows():
+                comp_pct = float(row.get('completeness_pct', 0.0))
+                val_pct = float(row.get('validity_pct', 0.0))
+                
+                c_name, c_comp, c_val = st.columns([3, 4, 4])
+                with c_name:
+                    st.write(f"**{col_name}**")
+                    st.markdown(f"<span style='color: #fd7e14; font-size: 15px; font-weight: 600;'>Inválidos: {int(row['invalid'])}</span> &nbsp;|&nbsp; <span style='color: #dc3545; font-size: 15px; font-weight: 600;'>Nulos: {int(row['null'])}</span>", unsafe_allow_html=True)
+                with c_comp:
+                    st.markdown(f"<span style='font-size:12px;'>Completude</span>", unsafe_allow_html=True)
+                    st.markdown(colored_progress_bar(comp_pct, threshold), unsafe_allow_html=True)
+                with c_val:
+                    st.markdown(f"<span style='font-size:12px;'>Validade</span>", unsafe_allow_html=True)
+                    st.markdown(colored_progress_bar(val_pct, threshold), unsafe_allow_html=True)
+                
+                st.write("") 
+
+        st.subheader("🔴 Colunas Obrigatórias")
+        st.caption("Erros nestas colunas reprovam o registro.")
+        render_col_quality(df_hard)
+        
+        st.write("---")
+            
+        st.subheader("🟡 Colunas Opcionais")
+        st.caption("Erros nestas colunas geram alertas, mas não reprovam o registro.")
+        render_col_quality(df_soft)
+
+    # --- ABA 2: EXPLORATÓRIA & DRIFT ---
+    with tab2:
+        unmapped = m.get("unmapped_columns", [])
+        if unmapped:
+            st.error(f"🚨 **Alerta de Schema Drift:** {len(unmapped)} coluna(s) não mapeada(s): `{unmapped}`.")
+        
         st.subheader("Estatísticas Numéricas")
         eda = dq_data.get("eda", {})
         num_data = eda.get("numeric", {})
@@ -163,43 +232,52 @@ if menu == "1. Monitoramento DQ (Histórico)":
             df_num.rename(columns={'min': 'Mínimo', 'max': 'Máximo', 'avg': 'Média'}, inplace=True)
             st.dataframe(df_num, use_container_width=True)
                 
-        st.divider()
         st.subheader("Mapeamento de Categorias (Data Drift)")
-        
         cat_data = eda.get("categorical", {})
         for col_name, found_categories in cat_data.items():
             expected = set(EXPECTED_CATEGORIES.get(col_name, []))
             found = set(found_categories)
-            
             drifted = found - expected
             
             st.markdown(f"**Coluna:** `{col_name}`")
             if drifted:
-                st.error(f"⚠️ **Alerta de Drift:** Novas categorias não mapeadas encontradas: {list(drifted)}")
+                st.error(f"⚠️ **Alerta de Drift:** Novas categorias encontradas: {list(drifted)}")
             else:
-                st.success("✅ Todas as categorias encontradas correspondem ao contrato esperado.")
-                
-            st.caption(f"Valores identificados no lote: {list(found)}")
+                st.success("✅ Todas as categorias correspondem ao contrato.")
             st.write("---")
-
-        if not unmapped:
-            st.success("✅ Nenhuma coluna não mapeada (Schema Drift) detectada na estrutura deste lote.")
 
 # ==========================================
 # PÁGINA 2: CATÁLOGO DE DADOS
 # ==========================================
 elif menu == "2. Catálogo de Dados":
     st.title("Dicionário de Variáveis")
-    st.markdown("Documentação centralizada do Data Lakehouse, apresentando o estado e as regras de qualidade aplicadas em cada etapa.")
-    st.divider()
-    
     catalog = load_json("data_catalog.json")
     
-    for layer_name, schema_list in catalog.items():
-        st.subheader(f"Camada: {layer_name}")
-        df_catalog = pd.DataFrame(schema_list)
-        st.dataframe(df_catalog, use_container_width=True, hide_index=True)
-        st.write("")
+    layer_names = list(catalog.keys())
+    tabs = st.tabs(layer_names)
+    
+    def color_obrigatorio(val):
+        val_str = str(val).strip().lower()
+        if val_str == 'sim':
+            return 'color: #f87171; font-weight: bold;'
+        elif val_str == 'não' or val_str == 'nao':
+            return 'color: #facc15; font-weight: bold;'
+        return ''
+
+    for idx, tab in enumerate(tabs):
+        with tab:
+            df_catalog = pd.DataFrame(catalog[layer_names[idx]])
+            
+            # Tratamento de erro: só aplica a cor se a coluna existir nesta aba/camada
+            if 'obrigatorio' in df_catalog.columns:
+                styled_df = df_catalog.style.map(
+                    color_obrigatorio, subset=['obrigatorio']
+                ) if hasattr(df_catalog.style, 'map') else df_catalog.style.applymap(
+                    color_obrigatorio, subset=['obrigatorio']
+                )
+                st.dataframe(styled_df, use_container_width=True, hide_index=True)
+            else:
+                st.dataframe(df_catalog, use_container_width=True, hide_index=True)
 
 # ==========================================
 # PÁGINA 3: EXPLORAÇÃO (DUCKDB)
@@ -216,19 +294,19 @@ elif menu == "3. Exploração (DuckDB)":
         "Gold (Top Sales)": "data/gold/top_sales/*.parquet"
     }
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
+    c1, c2 = st.columns([3, 1])
+    with c1: 
         selected_layer = st.selectbox("Selecione a camada para visualização:", list(layer_map.keys()))
-    with col2:
-        row_limit = st.select_slider("Limite de Linhas (Performance)", options=[100, 500, 1000, 5000], value=1000)
+    with c2: 
+        row_limit = st.select_slider("Limite de Linhas (Performance)", options=[100, 250, 500, 1000, 5000], value=250)
+    
+    st.write("")
     
     try:
         conn = get_duckdb_conn()
-        query = f"SELECT * FROM read_parquet('{layer_map[selected_layer]}') LIMIT {row_limit}"
-        df_preview = conn.execute(query).df()
+        df_preview = conn.execute(f"SELECT * FROM read_parquet('{layer_map[selected_layer]}') LIMIT {row_limit}").df()
         
         st.write(f"Exibindo amostra de `{len(df_preview)}` registros:")
         st.dataframe(df_preview, use_container_width=True, hide_index=True)
     except Exception as e:
-        st.error("Dados não encontrados para esta camada. Verifique se a pipeline já foi executada.")
-        st.caption(f"Erro original: {e}")
+        st.error("Dados não encontrados para esta camada.")
