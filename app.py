@@ -4,7 +4,7 @@ import duckdb
 import json
 import glob
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="Data Quality Scorecard", layout="wide", initial_sidebar_state="expanded")
@@ -17,7 +17,7 @@ def get_duckdb_conn():
     return duckdb.connect(database=':memory:')
 
 def notify_update():
-    st.toast("Scorecard atualizado com sucesso!", icon="📊")
+    st.toast("Painel atualizado com sucesso!", icon="📊")
 
 def colored_progress_bar(pct, threshold):
     color = "#28a745" if pct >= threshold else ("#ffc107" if pct >= (threshold - 5.0) else "#dc3545")
@@ -70,7 +70,8 @@ if menu == "1. Visão Geral DQ":
     
     try:
         dt_obj = datetime.fromisoformat(dq_data['execution_date'])
-        data_formatada = dt_obj.strftime("%d/%m/%Y %H:%M:%S")
+        dt_obj_utc3 = dt_obj - timedelta(hours=3)
+        data_formatada = dt_obj_utc3.strftime("%d/%m/%Y %H:%M:%S")
     except:
         data_formatada = dq_data['execution_date']
 
@@ -78,48 +79,53 @@ if menu == "1. Visão Geral DQ":
 
     # --- ABA 1: VISÃO GERAL ---
     with tab1:
-        st.markdown(f"**Data de Processamento do Lote:** {data_formatada}")
+        st.markdown(f"**Data de Processamento do Lote:** {data_formatada} (UTC-3)")
         
-        # 1. KPIs Principais
+        # 1. KPIs Principais com calculo de percentual
         total_ingested = m['total_records'] + m.get('duplicate_records', 0)
         duplicates = m.get('duplicate_records', 0)
         quarantine = m['total_errors']
         clean_records = m['total_records'] - quarantine
         
+        pct_dup = round((duplicates / total_ingested) * 100, 2) if total_ingested else 0.0
+        pct_quar = round((quarantine / total_ingested) * 100, 2) if total_ingested else 0.0
+        pct_clean = round((clean_records / total_ingested) * 100, 2) if total_ingested else 0.0
+        
         kpi_style = "padding: 15px; border-radius: 8px; text-align: center; background-color: #1e272e; border: 1px solid #333;"
         
         c1, c2, c3, c4 = st.columns([2, 1, 1, 2])
         with c1:
-            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #4da6ff;"><span style="color:#a4b0be; font-size:14px;">Registros Recebidos</span><br><span style="color:#4da6ff; font-size:28px; font-weight:bold;">{total_ingested:,}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #4da6ff;"><span style="color:#a4b0be; font-size:14px;">Registros Recebidos</span><br><span style="color:#4da6ff; font-size:28px; font-weight:bold;">{f"{total_ingested:,}".replace(",", ".")}</span></div>', unsafe_allow_html=True)
         with c2:
-            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #facc15;"><span style="color:#a4b0be; font-size:14px;">Duplicidade</span><br><span style="color:#facc15; font-size:28px; font-weight:bold;">{duplicates:,}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #facc15;"><span style="color:#a4b0be; font-size:14px;">Duplicidade</span><br><span style="color:#facc15; font-size:28px; font-weight:bold;">{f"{duplicates:,}".replace(",", ".")} <span style="font-size:14px; opacity:0.8;">({f"{pct_dup:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") }%)</span></span></div>', unsafe_allow_html=True)
         with c3:
-            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #dc3545;"><span style="color:#a4b0be; font-size:14px;">Quarentena</span><br><span style="color:#dc3545; font-size:28px; font-weight:bold;">{quarantine:,}</span></div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #dc3545;"><span style="color:#a4b0be; font-size:14px;">Quarentena</span><br><span style="color:#dc3545; font-size:28px; font-weight:bold;">{f"{quarantine:,}".replace(",", ".")} <span style="font-size:14px; opacity:0.8;">({f"{pct_quar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") }%)</span></span></div>', unsafe_allow_html=True)
         with c4:
-            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #28a745;"><span style="color:#a4b0be; font-size:14px;">Registros Válidos</span><br><span style="color:#28a745; font-size:28px; font-weight:bold;">{clean_records:,}</span></div>', unsafe_allow_html=True)
-        
-        st.write("")
+            st.markdown(f'<div style="{kpi_style} border-top: 4px solid #28a745;"><span style="color:#a4b0be; font-size:14px;">Registros Válidos</span><br><span style="color:#28a745; font-size:28px; font-weight:bold;">{f"{clean_records:,}".replace(",", ".")} <span style="font-size:14px; opacity:0.8;">({f"{pct_clean:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") }%)</span></span></div>', unsafe_allow_html=True)
+        st.write("") 
         
         with st.expander("ℹ️ Entenda as Métricas e Regras de Qualidade"):
             st.markdown("""
             **Métricas Gerais:**
-            * **Registros Recebidos:** Volume total de linhas brutas ingeridas no lote.
-            * **Duplicidade:** Registros 100% idênticos que foram descartados para evitar contagem dupla.
-            * **Quarentena:** Registros bloqueados e separados na camada Silver (Quarentena) por violações em regras estruturais.
-            * **Registros Válidos:** Registros que passaram por todas as validações obrigatórias e estão prontos para consumo na Gold.
+            * **Registros Recebidos:** Volume total de linhas brutas ingeridas no lote antes das validações de qualidade.
+            * **Duplicidade:** Quantidade de registros 100% idênticos que foram descartados para evitar contagem dupla.
+            * **Quarentena:** Quantidade de registros que falharam em uma ou mais regras bloqueantes de qualidade e foram separados na camada Silver (Quarentena).
+            * **Registros Válidos:** Quantidade de registros que passaram por todas as validações obrigatórias e estão prontos para consumo na Gold.
+            * **Taxa de Aproveitamento do Lote:** Percentual de registros recebidos que sobreviveram às validações e foram aprovados (Registros Válidos em relação ao Total Recebido).
 
-            **Auditoria e Desvios:**
-            * **Alertas:** Erros ou Nulos detectados em colunas não obrigatórias. A linha é aprovada.
-            * **Erros de Validação:** A linha tem a estrutura correta, mas quebra regras de negócio (ex: valores negativos) em colunas obrigatórias. A linha é descartada para Quarentena.
-            * **Valores Nulos:** Falta de informação em colunas obrigatórias. A linha é descartada para Quarentena.
-
+            **Auditoria e Ocorrências:**
+            > **Importante:** os valores abaixo representam ocorrências de problemas identificadas nas colunas. Um mesmo registro pode apresentar múltiplas ocorrências.
+            * **Alertas:** Ocorrências de Nulos ou Erros de validação detectados em colunas não obrigatórias.
+            * **Erros de Validação:** Ocorrência de um valor que não atende às regras estabelecidas em colunas obrigatórias. (ex: valores negativos em `amount`) . A linha é descartada para Quarentena.
+            * **Valores Nulos:** Ocorrência de falta de informação em colunas obrigatórias. A linha é descartada para Quarentena.
+         
             **Qualidade por Coluna:**
-            * **Completude:** Mede a ausência de valores nulos (nulos reduzem a completude).
-            * **Validade:** Mede o quanto os dados preenchidos respeitam as regras de formatação e domínio estabelecidas.
+            * **Completude:** Percentual de valores preenchidos em uma coluna.
+            * **Validade:** Percentual de valores que atendem às regras de formato, domínio e/ou negócio estabelecidas para a coluna.
             """)
 
         st.divider()
-        
+
         # 2. Avaliação de Qualidade
         col_gauge, spacer, col_cards = st.columns([4, 1, 5])
         
@@ -127,12 +133,12 @@ if menu == "1. Visão Geral DQ":
             conformidade = m['conformity_rate_pct']
             cor_gauge = "#28a745" if conformidade >= threshold else "#dc3545"
             
-            fig = go.Figure(go.Indicator(
+            fig_gauge = go.Figure(go.Indicator(
                 mode="gauge+number",
                 value=conformidade,
                 number={'suffix': "%", 'font': {'size': 40}},
                 domain={'x': [0, 1], 'y': [0, 1]},
-                title={'text': "Conformidade Global", 'font': {'size': 18}},
+                title={'text': "Taxa de Aproveitamento do Lote", 'font': {'size': 18}},
                 gauge={
                     'axis': {'range': [0, 100], 'tickwidth': 1},
                     'bar': {'color': cor_gauge},
@@ -146,17 +152,17 @@ if menu == "1. Visão Geral DQ":
                     }
                 }
             ))
-            fig.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
-            st.plotly_chart(fig, use_container_width=True)
+            fig_gauge.update_layout(height=320, margin=dict(l=20, r=20, t=50, b=20))
+            st.plotly_chart(fig_gauge, use_container_width=True)
 
         with spacer:
             st.empty()
 
         with col_cards:
-            st.write("### Auditoria de Registros")
+            st.write("### Auditoria de Qualidade — Ocorrências ")
             
             alerts = m.get('total_alerts', 0)
-            fatal_errors = dq_data["anomalies"].get("missing_values", 0)
+            nulls_errors = dq_data["anomalies"].get("missing_values", 0)
             logic_errors = dq_data["anomalies"].get("invalid_values", 0)
 
             html_cards = f"""
@@ -164,18 +170,18 @@ if menu == "1. Visão Geral DQ":
                     <!-- Card Erros de Validacao -->
                     <div style="flex: 1; background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #fb923c;">
                         <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Erros de Validação</div>
-                        <div style="font-size: 26px; font-weight: 700; color: #fb923c;">{logic_errors:,}</div>
+                        <div style="font-size: 26px; font-weight: 700; color: #fb923c;">{f"{logic_errors:,}".replace(",", ".")}</div>
                     </div>
                     <!-- Card Valores Nulos -->
                     <div style="flex: 1; background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #f87171;">
                         <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Valores Nulos</div>
-                        <div style="font-size: 26px; font-weight: 700; color: #f87171;">{fatal_errors:,}</div>
+                        <div style="font-size: 26px; font-weight: 700; color: #f87171;">{f"{nulls_errors:,}".replace(",", ".")}</div>
                     </div>
                 </div>
                 <!-- Card Alertas -->
                 <div style="background-color: #1a222d; padding: 16px; border-radius: 8px; border-left: 4px solid #facc15;">
                     <div style="font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px;">Alertas</div>
-                    <div style="font-size: 26px; font-weight: 700; color: #facc15;">{alerts:,}</div>
+                    <div style="font-size: 26px; font-weight: 700; color: #facc15;">{f"{alerts:,}".replace(",", ".")}</div>
                 </div>
                 """
             st.markdown(html_cards, unsafe_allow_html=True)
@@ -190,10 +196,15 @@ if menu == "1. Visão Geral DQ":
         df_hard = df_col[df_col.index.isin(HARD_COLS)]
         df_soft = df_col[~df_col.index.isin(HARD_COLS)]
 
-        def render_col_quality(df_subset):
+        def render_col_quality(df_subset, total_rows):
             for col_name, row in df_subset.iterrows():
                 comp_pct = float(row.get('completeness_pct', 0.0))
-                val_pct = float(row.get('validity_pct', 0.0))
+                
+                non_null_count = total_rows - int(row['null'])
+                if non_null_count > 0:
+                    val_pct = (int(row['valid']) / non_null_count) * 100.0
+                else:
+                    val_pct = 100.0
                 
                 c_name, c_comp, c_val = st.columns([3, 4, 4])
                 with c_name:
@@ -210,13 +221,13 @@ if menu == "1. Visão Geral DQ":
 
         st.subheader("🔴 Colunas Obrigatórias")
         st.caption("Erros nestas colunas reprovam o registro.")
-        render_col_quality(df_hard)
+        render_col_quality(df_hard, m['total_records']) 
         
         st.write("---")
             
         st.subheader("🟡 Colunas Opcionais")
         st.caption("Erros nestas colunas geram alertas, mas não reprovam o registro.")
-        render_col_quality(df_soft)
+        render_col_quality(df_soft, m['total_records'])
 
     # --- ABA 2: EXPLORATÓRIA & DRIFT ---
     with tab2:
